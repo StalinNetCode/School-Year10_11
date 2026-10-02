@@ -1,0 +1,145 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>GCSE Practice Portal</title>
+<style>
+:root{--bg:#fbf6ea;--cd:#fff;--tx:#23221f;--mu:#6b6558;--pr:#0f6b5c;--on:#fff;--ok:#12703a;--bad:#b3261e;--bd:#e4dbc6;--ac:#f2b544;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15201d;--cd:#1e2c28;--tx:#f1efe6;--mu:#a9b5ad;--pr:#5cd0b5;--on:#0c1b17;--ok:#6fdc97;--bad:#ff8f86;--bd:#31443e;--ac:#f2b544}}
+:root[data-theme="dark"]{--bg:#15201d;--cd:#1e2c28;--tx:#f1efe6;--mu:#a9b5ad;--pr:#5cd0b5;--on:#0c1b17;--ok:#6fdc97;--bad:#ff8f86;--bd:#31443e;--ac:#f2b544}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.5 "Trebuchet MS","Segoe UI",system-ui,sans-serif}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font:800 clamp(1.7rem,6vw,2.5rem)/1.1 Georgia,"Times New Roman",serif;margin:.4em 0}h2{font-size:1.1rem;margin:1em 0 .4em}h3{font-size:1rem;margin:.8em 0 .3em}
+nav{display:flex;gap:8px;justify-content:flex-end;padding:8px 16px 0;max-width:760px;margin:0 auto}
+.card{background:var(--cd);border:2px solid var(--bd);border-radius:16px;padding:18px}
+label{display:block;font-weight:700;margin:10px 0}
+input,select{width:100%;font:inherit;padding:11px 12px;margin-top:5px;border:2px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
+button{font:inherit;font-weight:700;padding:10px 16px;border:0;border-radius:10px;background:var(--pr);color:var(--on);cursor:pointer;margin:6px 6px 0 0}
+button.g{background:transparent;color:var(--pr);border:2px solid var(--pr)}button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}.chip{background:var(--bg);color:var(--tx);border:2px solid var(--bd);margin:0;text-align:left}
+.chip.on{border-color:var(--pr);background:var(--pr);color:var(--on)}.chip small{display:block;font-weight:400}
+.meta{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}.meta span{background:var(--cd);border:2px solid var(--bd);border-radius:99px;padding:2px 12px;font-size:.9rem}
+.mu{color:var(--mu)}.q{font-size:1.25rem;font-weight:700}.err{color:var(--bad);min-height:1.4em;font-weight:700}
+.hint{font-weight:400;font-size:.9rem;margin:-4px 0 0}
+.fb{font-weight:800;font-size:1.15rem}.ok{color:var(--ok)}.bad{color:var(--bad)}
+.pn{border-left:6px solid var(--ac);background:var(--bg);padding:6px 14px;margin-top:12px;border-radius:0 10px 10px 0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}.stats div{background:var(--cd);border:2px solid var(--bd);border-radius:12px;padding:10px}.stats b{display:block;font-size:1.5rem}
+.big{background:var(--ac)!important;color:#23221f}.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+.bars{display:flex;align-items:flex-end;gap:6px;height:90px}.bars i{flex:1;background:var(--pr);border-radius:4px 4px 0 0;min-height:3px}
+.cf{position:fixed;top:-2rem;font-size:1.6rem;pointer-events:none;animation:fall 1.8s ease-in forwards}@keyframes fall{to{transform:translateY(110vh) rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.cf{display:none}}
+</style></head><body><nav id="nv"></nav><main id="app"></main>
+<script>
+"use strict";
+/* ---------- Storage layer (swap these two functions for a backend later) ---------- */
+const KEY='gcse_portal_v1';let D={tests:[],last:''};
+try{Object.assign(D,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}};
+/* ---------- Helpers ---------- */
+const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const PUP=[1,2,4,5],DIFF=['Easy','Moderate','Difficult','Very Difficult'];
+const SUBJ=['Maths','Additional Maths','Biology','Chemistry','Physics','Computer Science','Geography','Psychology','Spanish','English','English Literature and Performance'];
+/* ---------- Exam boards. BOARD[subject] is selected automatically when the subject is chosen.
+   An empty string means "To be confirmed" (the subject is not in the reference list). ---------- */
+const BOARDS=['AQA','Pearson Edexcel','OCR','WJEC/Eduqas'];
+const BOARD={
+'Maths':'Pearson Edexcel',
+'Additional Maths':'OCR',
+'Biology':'AQA',
+'Chemistry':'AQA',
+'Physics':'AQA',
+'Computer Science':'AQA',
+'Geography':'AQA',
+'Psychology':'',
+'Spanish':'AQA',
+'English':'AQA',
+'English Literature and Performance':'AQA'};
+const TBC='To be confirmed';
+const bnote=s=>!s?'Choose a subject and the exam board is selected automatically.':BOARD[s]?`Selected automatically for ${s}. Change it if your school uses a different board.`:`${s} is not in the reference list, so choose the board your school uses.`;
+function rng(str){let h=1779033703^str.length;for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),3432918353);h=h<<13|h>>>19}let a=h;return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let R=Math.random;const r=(a,b)=>a+Math.floor(R()*(b-a+1));
+const Q=(q,a,m,w,o)=>({q,a,m,w,...o});
+const nums=(k,lo,hi)=>{const n=Array.from({length:k},()=>r(lo,hi));n[k-1]+=(k-n.reduce((s,x)=>s+x,0)%k)%k;return n};
+const sup=(b,n)=>`${b}<sup>${n}</sup>`;
+const sg=n=>n<0?`− ${-n}`:`+ ${n}`;
+const P=(...c)=>{let s='';c.forEach((k,i)=>{const p=c.length-1-i;if(!k)return;const a=Math.abs(k),m=p?(a==1?'':a)+'x'+(p==2?'²':p==3?'³':''):a;s+=(k<0?'-':s?'+':'')+m});return s||'0'};
+const fx=s=>s.replace(/-/g,' − ').replace(/\+/g,' + ').replace(/^ − /,'−');
+const f=x=>+x.toFixed(4),ans=q=>q.d!=null?q.d:Array.isArray(q.a)?q.a.join(' and '):q.a;
+/* ---------- Question bank: BANK[subject][topic] = [easy, moderate, difficult, very difficult].
+   Each level is a LIST of question templates. A test cycles through the list in a shuffled order, so the
+   10 questions use different stories and cover every part of the topic. To add a question, add a template to a list.
+   Templates are seeded, so every (topic, difficulty) has 10 repeatable test sets.
+   Answers may be a number, a polynomial string (any term order), or an array of numbers (any order, e.g. two roots).
+   Options (5th argument of Q): d = how the answer is displayed, fmt:'f' = must be typed as a simplest-form fraction,
+   fmt:'d' = must be typed as a decimal.
+   NO QUESTIONS ARE LOADED YET. Example of how to add a topic:
+   BANK['Maths']['Indices']=[[ ()=>Q('Work out 2<sup>3</sup>.',8,'Method text','Working text') ],[ ...moderate ],[ ...difficult ],[ ...very difficult ]]; ---------- */
+const pick=a=>a[r(0,a.length-1)];
+const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
+const frac=(n,d)=>{const g=gcd(n,d)||1;n/=g;d/=g;if(d<0){n=-n;d=-d}return d==1?`${n}`:`${n}/${d}`};
+const QF=(q,n,d,m,w,o)=>Q(q,n/d,m,w,{d:frac(n,d),...o});
+const gbp=p=>(p/100).toFixed(2);
+const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=r(0,i);[a[i],a[j]]=[a[j],a[i]]}return a};
+const NAMES=['Aarav','Maya','Oliver','Zara','Leo','Priya','Noah','Amira','Ethan','Sofia','Kai','Hana','Daniel','Chloe','Ravi','Isla','Tomas','Meera'];
+const who=(k=1)=>{const s=[];while(s.length<k){const n=pick(NAMES);if(!s.includes(n))s.push(n)}return k==1?s[0]:s};
+const bk=a=>`(x ${sg(a)})`;
+const cf=k=>k==1?'':k;
+const BANK={
+'Maths':{},
+'Additional Maths':{},
+'Biology':{},
+'Chemistry':{},
+'Physics':{},
+'Computer Science':{},
+'Geography':{},
+'Psychology':{},
+'Spanish':{},
+'English':{},
+'English Literature and Performance':{}
+};
+/* ---------- Answer validation ---------- */
+const num=s=>{s=String(s).toLowerCase().trim().replace(/−/g,'-');const mx=s.match(/^(-?)(\d+)\s+(\d+)\s*\/\s*(\d+)$/);if(mx)return(mx[1]?-1:1)*(+mx[2]+mx[3]/mx[4]);s=s.replace(/[°%£\s,]|cm|units?|degrees?|²|³/g,'').replace(/^[a-z]=/,'').replace(/[a-z]+$/,'');const m=s.match(/^(-?\d+(?:\.\d+)?)\/(\d+(?:\.\d+)?)$/);return m?m[1]/m[2]:/^-?\d*\.?\d+$/.test(s)?+s:NaN};
+const norm=s=>String(s).toLowerCase().replace(/[\s*]/g,'').replace(/²/g,'^2').replace(/³/g,'^3').replace(/^[a-z]=/,'');
+const pn=s=>{s=String(s).toLowerCase().replace(/[\s*]/g,'').replace(/²/g,'^2').replace(/³/g,'^3').replace(/−/g,'-').replace(/^[a-z]=/,'');if(!/^[-+0-9x^.]+$/.test(s))return null;const m={},ts=s.match(/[+-]?[^+-]+/g);if(!ts)return null;for(const t of ts){const g=t.match(/^([+-]?)(\d*\.?\d*)(x?)(?:\^(\d+))?$/);if(!g||(!g[2]&&!g[3]))return null;m[g[3]?(g[4]?+g[4]:1):0]=(m[g[3]?(g[4]?+g[4]:1):0]||0)+(g[1]=='-'?-1:1)*(g[2]===''?1:+g[2])}return Object.keys(m).filter(k=>Math.abs(m[k])>1e-9).sort().map(k=>k+':'+m[k]).join('|')||'0'};
+const nl=s=>String(s).toLowerCase().replace(/[x=°%£]|cm|units?|degrees?/g,'').replace(/−/g,'-').split(/[,;]|\band\b|\bor\b|\s+/).filter(Boolean).map(num);
+const check=(q,v)=>Array.isArray(q.a)?(()=>{const g=nl(v).sort((a,b)=>a-b),e=[...q.a].sort((a,b)=>a-b);return g.length==e.length&&g.every((x,i)=>Math.abs(x-e[i])<0.005)})():typeof q.a==='number'?Math.abs(num(v)-q.a)<0.005:[q.a,...(q.alt||[])].some(x=>{const a=pn(x);return norm(x)===norm(v)||(a!==null&&a===pn(v))});
+/* ---------- State ---------- */
+let S={v:'home',name:D.last,subj:'',board:'',diff:-1,topic:'',t:null};
+const brd=b=>b||TBC;
+const mine=()=>D.tests.filter(t=>t.student.toLowerCase()===S.name.toLowerCase());
+function cheer(){try{const c=new(window.AudioContext||window.webkitAudioContext)(),n=c.sampleRate,b=c.createBuffer(1,n,n),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(Math.random()<.02?1:.15)*(1-i/n);const s=c.createBufferSource();s.buffer=b;s.connect(c.destination);s.start();[523,659,784].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain(),t=c.currentTime+i*.12;o.frequency.value=f;o.connect(g);g.connect(c.destination);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.start(t);o.stop(t+.3)})}catch(e){}
+for(let i=0;i<28;i++){const e=document.createElement('span');e.className='cf';e.textContent=['🐶','🎉','👏','⭐'][i%4];e.style.left=Math.random()*100+'vw';e.style.animationDelay=Math.random()*.4+'s';document.body.append(e);setTimeout(()=>e.remove(),2300)}}
+/* ---------- Views ---------- */
+const V={
+home:()=>`<h1>GCSE Practice Portal</h1><p class=mu>Type your answers, earn Puppies 🐶 and watch your total grow.</p><div class=card><label>Student Name<input id=nm value="${esc(S.name)}" placeholder="e.g. Smithy" autocomplete=off></label><label>Subject<select id=sb><option value="">Choose a subject…</option>${SUBJ.map(s=>`<option ${s==S.subj?'selected':''}>${s}</option>`).join('')}</select></label><label>Exam Board<select id=bd><option value="">${TBC}</option>${BOARDS.map(b=>`<option ${S.subj&&b==S.board?'selected':''}>${b}</option>`).join('')}</select></label><p class="mu hint" id=bn>${bnote(S.subj)}</p><p class=err id=er></p><button data-a=go>Continue</button></div>`,
+subj:()=>{const tp=Object.keys(BANK[S.subj]||{}),ready=S.diff>=0&&S.topic;return `<h1>${S.subj} Practice</h1><p class=mu>Student: ${esc(S.name)}<br>Exam board: ${esc(brd(S.board))}</p><div class=card><h2>Difficulty</h2><div class=chips>${DIFF.map((d,i)=>`<button class="chip ${S.diff==i?'on':''}" data-a=diff data-v=${i}>${d}<small>🐶 ${PUP[i]} ${PUP[i]>1?'Puppies':'Puppy'} per correct answer</small></button>`).join('')}</div><h2>Topic</h2>${tp.length?`<div class=chips>${tp.concat('Mixed').map(t=>`<button class="chip ${S.topic==t?'on':''}" data-a=top data-v="${esc(t)}">${t=='Mixed'?'Mixed topics (all)':t}</button>`).join('')}</div>`:`<p>${S.subj} questions aren't loaded yet. Add topics to the question bank to switch this subject on.</p>`}<button data-a=start ${ready?'':'disabled'}>Start test</button><button class=g data-a=home>Change subject</button></div>`},
+test:()=>{const t=S.t,q=t.qs[t.i];return `<p><b>${esc(t.id)}</b> <span class=mu>(Set ${t.setNo} of 10)</span></p><div class=meta><span>Question ${t.i+1} of 10</span><span>${DIFF[S.diff]}</span><span>${esc(q.topic)}</span><span>${esc(brd(S.board))}</span><span>🐶 ${t.pup} earned</span><span>${t.qs.filter(x=>!x.done).length} left</span></div><div class=card><h2>Question</h2><p class=q>${q.q}</p><h3>Your Answer</h3><input id=ans value="${esc(q.last||'')}" ${q.done?'disabled':''} placeholder="Type your answer" autocomplete=off>${typeof q.a==='string'?'<p class=mu>Type powers with ^, for example 3x^2 - 5x + 2.</p>':''}<div><button data-a=chk ${q.done?'disabled':''}>Check Answer</button><button class=g data-a=exp>Explain</button><button class=g data-a=cor>Correction</button></div>${q.fb?`<p class="fb ${q.ok?'ok':'bad'}" role=status>${q.fb}</p>`:''}${q.showEx?`<div class=pn><h3>Explain</h3><p>${q.m}</p></div>`:''}${q.showCor?`<div class=pn><h3>Correction</h3><p><b>Correct answer:</b> ${esc(ans(q))}</p><p><b>Method:</b> ${q.m}</p><p><b>Working:</b> ${q.w}</p><p><b>Your answer:</b> ${q.ok?'Correct.':q.last?`You wrote "${esc(q.last)}", which doesn't match ${esc(ans(q))}. Compare it with the working above.`:'You did not enter an answer.'}</p><p class=mu>No Puppies are awarded for using Correction.</p></div>`:''}${q.done?`<button data-a=next>${t.i==9?'Finish test':'Next question'} →</button>`:''}</div>`},
+done:()=>{const t=S.t.rec;return `<h1>Test Complete! 🎉</h1><div class=card><p><b>Student:</b> ${esc(t.student)}<br><b>Subject:</b> ${t.subject}<br><b>Exam Board:</b> ${esc(brd(t.board))}<br><b>Topic:</b> ${t.topic=='Mixed'?'Mixed topics':t.topic}<br><b>Difficulty:</b> ${DIFF[t.diff]}<br><b>Test Number:</b> ${esc(t.id)}<br><b>Date:</b> ${new Date(t.date).toLocaleDateString('en-GB')}</p><p><b>Correct:</b> ${t.correct} / 10<br><b>Incorrect:</b> ${10-t.correct} / 10</p><p class=q>Total Puppies: ${t.puppies} 🐶</p><button data-a=again>New test</button><button class=g data-a=dash>Dashboard</button></div>`},
+dash:()=>{const T=mine().slice().reverse(),P=T.reduce((s,t)=>s+t.puppies,0),C=T.reduce((s,t)=>s+t.correct,0),N=T.length*10,by={};T.forEach(t=>by[t.subject]=(by[t.subject]||0)+t.puppies);const rec=T.slice(0,10).reverse(),mx=Math.max(1,...rec.map(t=>t.puppies));
+return `<h1>${esc(S.name)}'s Dashboard</h1><div class=stats><div class=big><span>🐶 Total Puppies</span><b>${P}</b></div><div><span>Tests completed</span><b>${T.length}</b></div><div><span>Questions answered</span><b>${N}</b></div><div><span>Correct answers</span><b>${C}</b></div><div><span>Accuracy</span><b>${N?Math.round(C/N*100):0}%</b></div></div>
+<div class=card><h2>Puppies by subject</h2>${Object.keys(by).length?Object.entries(by).map(([k,v])=>`<p>${k}: <b>${v} 🐶</b></p>`).join(''):'<p class=mu>Complete a test to start earning Puppies.</p>'}<h2>Puppies per recent test</h2><div class=bars>${rec.map(t=>`<i title="${esc(t.id)}: ${t.puppies}" style="height:${t.puppies/mx*100}%"></i>`).join('')}</div></div>
+<h2>Recent tests</h2><div class=wrap><table><tr><th>Date<th>Test Number<th>Subject<th>Exam Board<th>Topic<th>Difficulty<th>Correct<th>Puppies</tr>${T.map(t=>`<tr><td>${new Date(t.date).toLocaleDateString('en-GB')}<td>${esc(t.id)}<td>${t.subject}<td>${esc(brd(t.board))}<td>${t.topic}<td>${DIFF[t.diff]}<td>${t.correct}/10<td>${t.puppies} 🐶</tr>`).join('')||'<tr><td colspan=8>No tests yet.</tr>'}</table></div>`}};
+function render(){$('#nv').innerHTML=S.name&&S.v!='home'?`<button class=g data-a=home>Home</button><button class=g data-a=dash>Dashboard</button>`:S.name?`<button class=g data-a=dash>Dashboard</button>`:'';$('#app').innerHTML=V[S.v]();const i=$('#ans');if(i&&!i.disabled)i.focus();window.scrollTo(0,0)}
+const cap=()=>{const i=$('#ans'),q=S.t.qs[S.t.i];if(i&&!q.done)q.last=i.value.trim();return q};
+const A={
+home(){S.v='home';render()},dash(){S.v='dash';render()},
+go(){const n=$('#nm').value.trim(),s=$('#sb').value;if(!n||!s){$('#er').textContent=!n?'Enter your name to continue.':'Select a subject to continue.';return}S.name=n;D.last=n;save();S.subj=s;S.board=$('#bd').value;S.diff=-1;S.topic='';S.v='subj';render()},
+diff(v){S.diff=+v;render()},top(v){S.topic=v;render()},
+start(){const tp=S.topic,key=[S.name.toLowerCase(),S.subj,tp,S.diff].join('|'),setNo=D.tests.filter(t=>t.key==key).length%10+1;R=rng(`${S.subj}|${tp}|${S.diff}|${setNo}`);const B=BANK[S.subj],names=tp=='Mixed'?shuf(Object.keys(B)):[tp],qs=[],seen=new Set,pool={},prev={};
+const gen=nm=>{const all=[].concat(B[nm][S.diff]);if(!pool[nm]||!pool[nm].length){pool[nm]=shuf(all.slice());if(all.length>1&&pool[nm][pool[nm].length-1]==prev[nm])pool[nm].unshift(pool[nm].pop())}return prev[nm]=pool[nm].pop()};
+for(let i=0;i<10;i++){const nm=names[i%names.length],g=gen(nm);let q,k=0;do q=g();while(seen.has(q.q)&&++k<30);seen.add(q.q);qs.push({...q,topic:nm,last:'',ok:false,done:false,pts:0})}
+const num=Math.max(0,...D.tests.filter(t=>t.student.toLowerCase()==S.name.toLowerCase()&&t.subject==S.subj).map(t=>t.num))+1;
+S.t={i:0,qs,num,setNo,key,pup:0,id:`${S.name} - ${S.subj} - ${String(num).padStart(4,'0')}`};S.v='test';render()},
+chk(){const q=cap();if(q.done)return;if(!q.last){q.fb='Type an answer first, then press Check Answer.';q.ok=false;render();return}
+if(q.fmt&&check(q,q.last)){const fr=/\//.test(q.last);if(q.fmt=='f'&&q.last.replace(/\s/g,'')!==q.d){q.fb=fr?'That has the right value, but it is not in its simplest form. Simplify it and try again.':'That has the right value, but the question asks for a fraction, such as 3/8.';q.ok=false;render();return}if(q.fmt=='d'&&fr){q.fb='That has the right value, but the question asks for a decimal.';q.ok=false;render();return}}
+if(check(q,q.last)){q.ok=q.done=true;q.pts=PUP[S.diff];S.t.pup+=q.pts;q.fb=`Correct! 🎉 +${q.pts} ${q.pts>1?'Puppies':'Puppy'} 🐶`;cheer()}else q.fb='Incorrect. Try again, or press Correction to see the answer.';render()},
+exp(){const q=cap();q.showEx=!q.showEx;render()},
+cor(){const q=cap();q.showCor=true;if(!q.ok){q.done=true;q.fb='Answer revealed. No Puppies awarded for this question.'}render()},
+next(){const t=S.t;if(t.i<9){t.i++;render();return}
+const rec={id:t.id,num:t.num,key:t.key,student:S.name,subject:S.subj,board:S.board,topic:S.topic,diff:S.diff,setNo:t.setNo,date:new Date().toISOString(),correct:t.qs.filter(q=>q.ok).length,puppies:t.pup,questions:t.qs.map(q=>({topic:q.topic,question:q.q,correctAnswer:q.a,answer:q.last,correct:q.ok,puppies:q.pts}))};
+D.tests.push(rec);save();t.rec=rec;S.v='done';render()},
+again(){S.v='subj';render()}};
+document.body.onclick=e=>{const a=e.target.closest('[data-a]');if(a)A[a.dataset.a](a.dataset.v)};
+/* Selecting a subject selects its exam board automatically */
+document.body.onchange=e=>{if(e.target.id==='sb'){const s=e.target.value;$('#bd').value=BOARD[s]||'';$('#bn').textContent=bnote(s)}};
+document.onkeydown=e=>{if(e.key==='Enter'&&e.target.id==='ans')A.chk();if(e.key==='Enter'&&e.target.id==='nm')A.go()};
+render();
+</script></body></html>
