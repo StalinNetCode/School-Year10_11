@@ -26,10 +26,19 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid 
 .bars{display:flex;align-items:flex-end;gap:6px;height:90px}.bars i{flex:1;background:var(--pr);border-radius:4px 4px 0 0;min-height:3px}
 .cf{position:fixed;top:-2rem;font-size:1.6rem;pointer-events:none;animation:fall 1.8s ease-in forwards}@keyframes fall{to{transform:translateY(110vh) rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.cf{display:none}}
+body.wide main,body.wide nav{max-width:1240px}
+.tw{display:grid;gap:16px;align-items:start}.tw.open{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.qh{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.qh h2{margin:0}.qh button{margin:0;padding:7px 12px;font-size:.9rem}
+.wb{padding:12px}.wbt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}.wbt b{margin-right:auto}
+.wbt button{margin:0;padding:6px 10px;font-size:.9rem}.wbt button.on{background:var(--pr);color:var(--on)}
+.wbt .sw{width:30px;height:30px;padding:0;border-radius:50%;border:3px solid var(--bd)}.wbt .sw.on{border-color:var(--ac);box-shadow:0 0 0 2px var(--ac)}
+#cv{display:block;width:100%;aspect-ratio:4/5;background:#fff linear-gradient(#e9eef3 1px,transparent 1px) 0 0/100% 28px;border:2px solid var(--bd);border-radius:10px;touch-action:none;cursor:crosshair}
+.wb small{display:block;margin-top:6px}
+@media(max-width:860px){.tw.open{grid-template-columns:1fr}#cv{aspect-ratio:1/1}}
 </style></head><body><nav id="nv"></nav><main id="app"></main>
 <script>
 "use strict";
-/* ---------- Storage layer (swap these two functions for a backend later) ---------- */
+/* ---------- Storage layer: this browser's copy of the results. The cloud sync further down keeps the shared copy in Supabase. ---------- */
 const KEY='gcse_portal_v1';let D={tests:[],last:''};
 try{Object.assign(D,JSON.parse(localStorage.getItem(KEY)||'{}'))}catch(e){}
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){}};
@@ -71,7 +80,8 @@ const f=x=>+x.toFixed(4),ans=q=>q.d!=null?q.d:Array.isArray(q.a)?q.a.join(' and 
    Options (5th argument of Q): d = how the answer is displayed, fmt:'f' = must be typed as a simplest-form fraction,
    fmt:'d' = must be typed as a decimal.
    NO QUESTIONS ARE LOADED YET. Example of how to add a topic:
-   BANK['Maths']['Indices']=[[ ()=>Q('Work out 2<sup>3</sup>.',8,'Method text','Working text') ],[ ...moderate ],[ ...difficult ],[ ...very difficult ]]; ---------- */
+   BANK['Maths']['Number: Surds']=[[ ()=>Q('Work out 2<sup>3</sup>.',8,'Method text','Working text') ],[ ...moderate ],[ ...difficult ],[ ...very difficult ]];
+   subjects.js (loaded after this script) adds multiple-choice, number-with-unit and free-text question kinds, and can load topic files from subject folders. ---------- */
 const pick=a=>a[r(0,a.length-1)];
 const gcd=(a,b)=>b?gcd(b,a%b):Math.abs(a);
 const frac=(n,d)=>{const g=gcd(n,d)||1;n/=g;d/=g;if(d<0){n=-n;d=-d}return d==1?`${n}`:`${n}/${d}`};
@@ -114,29 +124,54 @@ const pn=s=>{s=String(s).toLowerCase().replace(/[\s*]/g,'').replace(/²/g,'^2').
 const nl=s=>String(s).toLowerCase().replace(/[x=°%£]|cm|units?|degrees?/g,'').replace(/−/g,'-').split(/[,;]|\band\b|\bor\b|\s+/).filter(Boolean).map(num);
 const check=(q,v)=>Array.isArray(q.a)?(()=>{const g=nl(v).sort((a,b)=>a-b),e=[...q.a].sort((a,b)=>a-b);return g.length==e.length&&g.every((x,i)=>Math.abs(x-e[i])<0.005)})():typeof q.a==='number'?Math.abs(num(v)-q.a)<0.005:[q.a,...(q.alt||[])].some(x=>{const a=pn(x);return norm(x)===norm(v)||(a!==null&&a===pn(v))});
 /* ---------- State ---------- */
-let S={v:'home',name:D.last,subj:'',board:'',diff:-1,topic:'',t:null};
+let S={v:'home',name:D.last,pin:'',ok:false,subj:'',board:'',diff:-1,topic:'',t:null};
 const brd=b=>b||TBC;
-const mine=()=>D.tests.filter(t=>t.student.toLowerCase()===S.name.toLowerCase());
+const lk=t=>t.student.toLowerCase()===S.name.toLowerCase(),mine=()=>D.tests.filter(lk).sort((a,b)=>a.date<b.date?-1:1);
+/* ---------- Cloud sync (Supabase). Students sign in with a name and PIN; the database function portal_sync checks the PIN,
+   stores any new results and returns the student's full history, so the dashboard is the same on every device.
+   SK is the project's public (publishable) key: it only allows calling the portal functions, never reading the tables directly.
+   This is the same database as the Year 8 & 9 portal, so a student has one name, one PIN and one Puppy total across both portals,
+   and admin.html shows the students of both.
+   A result that cannot be uploaded (no internet) stays in this browser and is sent at the next sign-in or dashboard visit.
+   pull() keeps an open page in step with other devices: it runs every 30 seconds while the dashboard is showing,
+   and whenever the tab is reopened or the internet comes back. ---------- */
+const SB='https://zkxruxtvcgotbnersuaj.supabase.co',SK='sb_publishable_w5PQJEWWNFzh-QbIe5NNzw_k4nMJhk8';
+const sync=async(tests,mk)=>{const n=S.name,x=await fetch(SB+'/rest/v1/rpc/portal_sync',{method:'POST',headers:{'Content-Type':'application/json',apikey:SK,Authorization:'Bearer '+SK},body:JSON.stringify({p_name:n,p_pin:S.pin,p_tests:tests,p_create:!!mk})});if(!x.ok||n!==S.name)throw new Error('sync');return x.json()};
+const pend=()=>D.tests.filter(t=>lk(t)&&!t.sy).map(t=>(t.uid=t.uid||t.id+'|'+t.date,t));
+const take=j=>{const ids=new Set(j.tests.map(t=>t.uid));D.tests=D.tests.filter(t=>!lk(t)||(!t.sy&&!ids.has(t.uid))).concat(j.tests.map(t=>({...t,sy:1})));save()};
+const push=()=>{const p=pend();if(S.ok&&p.length)sync(p).then(j=>{if(j.status=='ok')take(j)}).catch(()=>{})};
+const sig=()=>mine().map(t=>t.uid+(t.sy||0)).join();
+const pull=()=>{if(!S.ok||S.busy||S.v=='test'||document.hidden)return;const p=pend(),b=sig();sync(p).then(j=>{if(j.status!='ok')return;take(j);if(S.v=='dash'&&sig()!=b)render()}).catch(()=>{})};
+setInterval(()=>{if(S.v=='dash')pull()},30000);document.addEventListener('visibilitychange',pull);window.addEventListener('online',pull);
 function cheer(){try{const c=new(window.AudioContext||window.webkitAudioContext)(),n=c.sampleRate,b=c.createBuffer(1,n,n),d=b.getChannelData(0);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*(Math.random()<.02?1:.15)*(1-i/n);const s=c.createBufferSource();s.buffer=b;s.connect(c.destination);s.start();[523,659,784].forEach((f,i)=>{const o=c.createOscillator(),g=c.createGain(),t=c.currentTime+i*.12;o.frequency.value=f;o.connect(g);g.connect(c.destination);g.gain.setValueAtTime(.1,t);g.gain.exponentialRampToValueAtTime(.001,t+.3);o.start(t);o.stop(t+.3)})}catch(e){}
 for(let i=0;i<28;i++){const e=document.createElement('span');e.className='cf';e.textContent=['🐶','🎉','👏','⭐'][i%4];e.style.left=Math.random()*100+'vw';e.style.animationDelay=Math.random()*.4+'s';document.body.append(e);setTimeout(()=>e.remove(),2300)}}
 /* ---------- Views ---------- */
 const V={
-home:()=>`<h1>GCSE Practice Portal</h1><p class=mu>Type your answers, earn Puppies 🐶 and watch your total grow.</p><div class=card><label>Student Name<input id=nm value="${esc(S.name)}" placeholder="e.g. Smithy" autocomplete=off></label><label>Subject<select id=sb><option value="">Choose a subject…</option>${SUBJ.map(s=>`<option ${s==S.subj?'selected':''}>${s}</option>`).join('')}</select></label><label>Exam Board<select id=bd><option value="">${TBC}</option>${BOARDS.map(b=>`<option ${S.subj&&b==S.board?'selected':''}>${b}</option>`).join('')}</select></label><p class="mu hint" id=bn>${bnote(S.subj)}</p><p class=err id=er></p><button data-a=go>Continue</button></div>`,
+home:()=>`<h1>GCSE Practice Portal</h1><p class=mu>Type your answers, earn Puppies 🐶 and watch your total grow.</p><div class=card><label>Student Name<input id=nm value="${esc(S.name)}" placeholder="e.g. Smithy" autocomplete=off></label><label>PIN (4 to 8 digits)<input id=pn type=password inputmode=numeric maxlength=8 value="${S.ok?esc(S.pin):''}" placeholder="Your secret number" autocomplete=off></label><label>Subject<select id=sb><option value="">Choose a subject…</option>${SUBJ.map(s=>`<option ${s==S.subj?'selected':''}>${s}</option>`).join('')}</select></label><label>Exam Board<select id=bd><option value="">${TBC}</option>${BOARDS.map(b=>`<option ${S.subj&&b==S.board?'selected':''}>${b}</option>`).join('')}</select></label><p class="mu hint" id=bn>${bnote(S.subj)}</p><p class=mu>First time? Choose a PIN and remember it. Your results are saved online, so you can carry on from any device.</p><p class=err id=er></p><button data-a=go>Continue</button></div>`,
 subj:()=>{const B=BANK[S.subj]||{},G=TOPICS[S.subj],anyQ=Object.keys(B).length>0,mix=S.topic=='Mixed',ready=S.diff>=0&&S.topic&&(mix?anyQ:!!B[S.topic]);
 const chip=(k,l)=>`<button class="chip ${S.topic==k?'on':''}" data-a=top data-v="${esc(k)}">${esc(l)}</button>`;
 const tops=G?Object.entries(G).map(([a,ts],i)=>`<h3>${i+1}. ${esc(a)}</h3><div class=chips>${ts.map(t=>chip(tkey(a,t),t)).join('')}</div>`).join('')+(anyQ?`<h3>All topics</h3><div class=chips>${chip('Mixed','Mixed topics (all)')}</div>`:''):anyQ?`<div class=chips>${Object.keys(B).map(t=>chip(t,t)).join('')}${chip('Mixed','Mixed topics (all)')}</div>`:`<p>${S.subj} questions aren't loaded yet. Add topics to the question bank to switch this subject on.</p>`;
 return `<h1>${S.subj} Practice</h1><p class=mu>Student: ${esc(S.name)}<br>Exam board: ${esc(brd(S.board))}${SPEC[S.subj]?`<br>Specification: ${esc(SPEC[S.subj])}`:''}</p><div class=card><h2>Difficulty</h2><div class=chips>${DIFF.map((d,i)=>`<button class="chip ${S.diff==i?'on':''}" data-a=diff data-v=${i}>${d}<small>🐶 ${PUP[i]} ${PUP[i]>1?'Puppies':'Puppy'} per correct answer</small></button>`).join('')}</div><h2>Topic</h2>${tops}${S.topic&&!mix&&!B[S.topic]?`<p class=mu>Questions for this topic aren't loaded yet, so a test can't be started.</p>`:''}<div><button data-a=start ${ready?'':'disabled'}>Start test</button><button class=g data-a=home>Change subject</button></div></div>`},
 test:()=>{const t=S.t,q=t.qs[t.i];return `<p><b>${esc(t.id)}</b> <span class=mu>(Set ${t.setNo} of 10)</span></p><div class=meta><span>Question ${t.i+1} of 10</span><span>${DIFF[S.diff]}</span><span>${esc(q.topic)}</span><span>${esc(brd(S.board))}</span><span>🐶 ${t.pup} earned</span><span>${t.qs.filter(x=>!x.done).length} left</span></div><div class=card><h2>Question</h2><p class=q>${q.q}</p><h3>Your Answer</h3><input id=ans value="${esc(q.last||'')}" ${q.done?'disabled':''} placeholder="Type your answer" autocomplete=off>${typeof q.a==='string'?'<p class=mu>Type powers with ^, for example 3x^2 - 5x + 2.</p>':''}<div><button data-a=chk ${q.done?'disabled':''}>Check Answer</button><button class=g data-a=exp>Explain</button><button class=g data-a=cor>Correction</button></div>${q.fb?`<p class="fb ${q.ok?'ok':'bad'}" role=status>${q.fb}</p>`:''}${q.showEx?`<div class=pn><h3>Explain</h3><p>${q.m}</p></div>`:''}${q.showCor?`<div class=pn><h3>Correction</h3><p><b>Correct answer:</b> ${esc(ans(q))}</p><p><b>Method:</b> ${q.m}</p><p><b>Working:</b> ${q.w}</p><p><b>Your answer:</b> ${q.ok?'Correct.':q.last?`You wrote "${esc(q.last)}", which doesn't match ${esc(ans(q))}. Compare it with the working above.`:'You did not enter an answer.'}</p><p class=mu>No Puppies are awarded for using Correction.</p></div>`:''}${q.done?`<button data-a=next>${t.i==9?'Finish test':'Next question'} →</button>`:''}</div>`},
 done:()=>{const t=S.t.rec;return `<h1>Test Complete! 🎉</h1><div class=card><p><b>Student:</b> ${esc(t.student)}<br><b>Subject:</b> ${t.subject}<br><b>Exam Board:</b> ${esc(brd(t.board))}<br><b>Topic:</b> ${t.topic=='Mixed'?'Mixed topics':t.topic}<br><b>Difficulty:</b> ${DIFF[t.diff]}<br><b>Test Number:</b> ${esc(t.id)}<br><b>Date:</b> ${new Date(t.date).toLocaleDateString('en-GB')}</p><p><b>Correct:</b> ${t.correct} / 10<br><b>Incorrect:</b> ${10-t.correct} / 10</p><p class=q>Total Puppies: ${t.puppies} 🐶</p><button data-a=again>New test</button><button class=g data-a=dash>Dashboard</button></div>`},
-dash:()=>{const T=mine().slice().reverse(),P=T.reduce((s,t)=>s+t.puppies,0),C=T.reduce((s,t)=>s+t.correct,0),N=T.length*10,by={};T.forEach(t=>by[t.subject]=(by[t.subject]||0)+t.puppies);const rec=T.slice(0,10).reverse(),mx=Math.max(1,...rec.map(t=>t.puppies));
-return `<h1>${esc(S.name)}'s Dashboard</h1><div class=stats><div class=big><span>🐶 Total Puppies</span><b>${P}</b></div><div><span>Tests completed</span><b>${T.length}</b></div><div><span>Questions answered</span><b>${N}</b></div><div><span>Correct answers</span><b>${C}</b></div><div><span>Accuracy</span><b>${N?Math.round(C/N*100):0}%</b></div></div>
+dash:()=>{const T=mine().slice().reverse(),P=T.reduce((s,t)=>s+t.puppies,0),C=T.reduce((s,t)=>s+t.correct,0),N=T.length*10,by={},wt=pend().length;T.forEach(t=>by[t.subject]=(by[t.subject]||0)+t.puppies);const rec=T.slice(0,10).reverse(),mx=Math.max(1,...rec.map(t=>t.puppies));
+return `<h1>${esc(S.name)}'s Dashboard</h1>${wt?`<p class=mu>${wt} result${wt>1?'s are':' is'} saved on this device and will upload when the internet is back.</p>`:''}<div class=stats><div class=big><span>🐶 Total Puppies</span><b>${P}</b></div><div><span>Tests completed</span><b>${T.length}</b></div><div><span>Questions answered</span><b>${N}</b></div><div><span>Correct answers</span><b>${C}</b></div><div><span>Accuracy</span><b>${N?Math.round(C/N*100):0}%</b></div></div>
 <div class=card><h2>Puppies by subject</h2>${Object.keys(by).length?Object.entries(by).map(([k,v])=>`<p>${k}: <b>${v} 🐶</b></p>`).join(''):'<p class=mu>Complete a test to start earning Puppies.</p>'}<h2>Puppies per recent test</h2><div class=bars>${rec.map(t=>`<i title="${esc(t.id)}: ${t.puppies}" style="height:${t.puppies/mx*100}%"></i>`).join('')}</div></div>
 <h2>Recent tests</h2><div class=wrap><table><tr><th>Date<th>Test Number<th>Subject<th>Exam Board<th>Topic<th>Difficulty<th>Correct<th>Puppies</tr>${T.map(t=>`<tr><td>${new Date(t.date).toLocaleDateString('en-GB')}<td>${esc(t.id)}<td>${t.subject}<td>${esc(brd(t.board))}<td>${t.topic}<td>${DIFF[t.diff]}<td>${t.correct}/10<td>${t.puppies} 🐶</tr>`).join('')||'<tr><td colspan=8>No tests yet.</tr>'}</table></div>`}};
-let PV='';function render(){$('#nv').innerHTML=S.name&&S.v!='home'?`<button class=g data-a=home>Home</button><button class=g data-a=dash>Dashboard</button>`:S.name?`<button class=g data-a=dash>Dashboard</button>`:'';$('#app').innerHTML=V[S.v]();const i=$('#ans');if(i&&!i.disabled)i.focus();if(S.v!=PV||S.v=='test')window.scrollTo(0,0);PV=S.v}
+let PV='';function render(){$('#nv').innerHTML=S.ok?`${S.v!='home'?'<button class=g data-a=home>Home</button>':''}<button class=g data-a=dash>Dashboard</button><button class=g data-a=out>Sign out</button>`:'';$('#app').innerHTML=V[S.v]();const i=$('#ans');if(i&&!i.disabled)i.focus();if(S.v!=PV||S.v=='test')window.scrollTo(0,0);PV=S.v}
 const cap=()=>{const i=$('#ans'),q=S.t.qs[S.t.i];if(i&&!q.done)q.last=i.value.trim();return q};
 const A={
-home(){S.v='home';render()},dash(){S.v='dash';render()},
-go(){const n=$('#nm').value.trim(),s=$('#sb').value;if(!n||!s){$('#er').textContent=!n?'Enter your name to continue.':'Select a subject to continue.';return}S.name=n;D.last=n;save();S.subj=s;S.board=$('#bd').value;S.diff=-1;S.topic='';S.v='subj';render()},
+home(){S.v='home';render()},
+dash(){if(!S.ok)return;S.v='dash';render();sync(pend()).then(j=>{if(j.status=='ok'){take(j);if(S.v=='dash')render()}}).catch(()=>{})},
+out(){S.ok=false;S.pin='';S.t=null;S.v='home';render()},
+/* Sign-in. A name that does not exist yet can be created (the PIN is typed twice). A student who was given a temporary PIN by the admin must choose their own PIN first. */
+async go(){if(S.busy)return;const n=$('#nm').value.trim(),p=$('#pn').value.trim(),s=$('#sb').value,bd=$('#bd').value,pk=/^\d{4,8}$/.test(p),er=m=>{const e=$('#er');if(e)e.textContent=m};if(!n||!pk||!s){er(!n?'Enter your name to continue.':!pk?'Enter your PIN (4 to 8 digits).':'Select a subject to continue.');return}
+S.name=n;S.pin=p;S.ok=false;S.subj=s;S.board=bd;S.busy=1;er('Signing in…');
+try{let j=await sync(pend());if(j.status=='unknown'){const c=prompt(`There is no student called "${n}" yet.\n\nTo create a new student, type the PIN again to confirm it:`);if(c===null){er('');return}if(c.trim()!==p){er('The two PINs did not match, so nothing was created. Try again.');return}j=await sync(pend(),1)}
+if(j.status=='change_pin'){const a=prompt(`Welcome, ${n}! The PIN you were given is temporary.\n\nChoose your own new PIN (4 to 8 digits) and keep it secret:`);if(a===null){er('Choose a new PIN to continue. Press Continue to try again.');return}const np=a.trim();if(!/^\d{4,8}$/.test(np)||np==p){er(np==p?'Your new PIN must be different from the temporary one. Press Continue to try again.':'A PIN must be 4 to 8 digits. Press Continue to try again.');return}const b=prompt('Type your new PIN again to confirm it:');if(b===null||b.trim()!==np){er('The two PINs did not match, so your PIN was not changed. Press Continue to try again.');return}
+const x=await fetch(SB+'/rest/v1/rpc/portal_sync',{method:'POST',headers:{'Content-Type':'application/json',apikey:SK,Authorization:'Bearer '+SK},body:JSON.stringify({p_name:n,p_pin:p,p_tests:pend(),p_new_pin:np})});if(!x.ok)throw new Error('sync');j=await x.json();if(j.status=='ok')S.pin=np}
+if(j.status!='ok'){er(j.status=='wrong_pin'?'That PIN does not match this name. Try again.':j.status=='locked'?'Too many wrong PINs. Wait 5 minutes, then try again.':'Could not sign in. Check the name and PIN.');return}
+take(j);S.ok=true;D.last=n;save();S.diff=-1;S.topic='';S.v='subj';render()}catch(e){er('Could not reach the server. Check the internet connection and try again.')}finally{S.busy=0}},
 diff(v){S.diff=+v;render()},top(v){S.topic=v;render()},
 start(){if(S.topic!='Mixed'&&!(BANK[S.subj]||{})[S.topic])return;const tp=S.topic,key=[S.name.toLowerCase(),S.subj,tp,S.diff].join('|'),setNo=D.tests.filter(t=>t.key==key).length%10+1;R=rng(`${S.subj}|${tp}|${S.diff}|${setNo}`);const B=BANK[S.subj],names=tp=='Mixed'?shuf(Object.keys(B)):[tp],qs=[],seen=new Set,pool={},prev={};
 const gen=nm=>{const all=[].concat(B[nm][S.diff]);if(!pool[nm]||!pool[nm].length){pool[nm]=shuf(all.slice());if(all.length>1&&pool[nm][pool[nm].length-1]==prev[nm])pool[nm].unshift(pool[nm].pop())}return prev[nm]=pool[nm].pop()};
@@ -149,12 +184,33 @@ if(check(q,q.last)){q.ok=q.done=true;q.pts=PUP[S.diff];S.t.pup+=q.pts;q.fb=`Corr
 exp(){const q=cap();q.showEx=!q.showEx;render()},
 cor(){const q=cap();q.showCor=true;if(!q.ok){q.done=true;q.fb='Answer revealed. No Puppies awarded for this question.'}render()},
 next(){const t=S.t;if(t.i<9){t.i++;render();return}
-const rec={id:t.id,num:t.num,key:t.key,student:S.name,subject:S.subj,board:S.board,topic:S.topic,diff:S.diff,setNo:t.setNo,date:new Date().toISOString(),correct:t.qs.filter(q=>q.ok).length,puppies:t.pup,questions:t.qs.map(q=>({topic:q.topic,question:q.q,correctAnswer:q.a,answer:q.last,correct:q.ok,puppies:q.pts}))};
-D.tests.push(rec);save();t.rec=rec;S.v='done';render()},
+const rec={uid:window.crypto&&crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2),id:t.id,num:t.num,key:t.key,student:S.name,subject:S.subj,board:S.board,topic:S.topic,diff:S.diff,setNo:t.setNo,date:new Date().toISOString(),correct:t.qs.filter(q=>q.ok).length,puppies:t.pup,questions:t.qs.map(q=>({topic:q.topic,question:q.q,correctAnswer:q.a,answer:q.last,correct:q.ok,puppies:q.pts}))};
+D.tests.push(rec);save();push();t.rec=rec;S.v='done';render()},
 again(){S.v='subj';render()}};
+/* ---------- Whiteboard: a hidden working-out pad beside each question. Each question keeps its own drawing (q.wb) until the test ends; drawings are never saved or uploaded. ---------- */
+const WBS={open:false,ink:'#1b1b1b',era:false},INK=[['#1b1b1b','Black'],['#1557c0','Blue'],['#c62828','Red'],['#1b7f3b','Green']];let wbRO=null;
+const wbQ=()=>S.t.qs[S.t.i];
+const WB=()=>`<div class="card wb"><div class=wbt><b>✏️ Working out</b>${INK.map(([c,n])=>`<button class="sw ${!WBS.era&&WBS.ink==c?'on':''}" data-a=wbc data-v="${c}" style="background:${c}" aria-label="${n} pen" title="${n} pen"></button>`).join('')}<button id=wbe class="g ${WBS.era?'on':''}" data-a=wbe>Eraser</button><button class=g data-a=wbu>Undo</button><button class=g data-a=wbx>Clear</button></div><canvas id=cv aria-label="Whiteboard for working out"></canvas><small class=mu>Draw with a finger, pen or mouse. Each question keeps its own working until the test ends.</small></div>`;
+function wbPaint(cv,st){const x=cv.getContext('2d'),w=cv.width,p=st.p;x.globalCompositeOperation=st.e?'destination-out':'source-over';x.strokeStyle=st.c;x.lineWidth=(st.e?.06:.006)*w;x.lineCap=x.lineJoin='round';x.beginPath();x.moveTo(p[0][0]*w,p[0][1]*w);if(p.length==1)x.lineTo(p[0][0]*w+.01,p[0][1]*w);for(let i=1;i<p.length;i++)x.lineTo(p[i][0]*w,p[i][1]*w);x.stroke()}
+function wbDraw(){const cv=$('#cv');if(!cv||!cv.clientWidth||!S.t)return;const d=window.devicePixelRatio||1;cv.width=Math.round(cv.clientWidth*d);cv.height=Math.round(cv.clientHeight*d);(wbQ().wb||[]).forEach(s=>wbPaint(cv,s))}
+function wbUI(){document.querySelectorAll('.sw').forEach(b=>b.classList.toggle('on',!WBS.era&&b.dataset.v==WBS.ink));const e=$('#wbe');if(e)e.classList.toggle('on',WBS.era)}
+function wbInit(){const cv=$('#cv');if(!cv)return;const q=wbQ();q.wb=q.wb||[];let cur=null,lw=0;
+const pt=e=>{const b=cv.getBoundingClientRect(),w=cv.clientWidth||1;return[(e.clientX-b.left-cv.clientLeft)/w,(e.clientY-b.top-cv.clientTop)/w]};
+cv.onpointerdown=e=>{e.preventDefault();try{cv.setPointerCapture(e.pointerId)}catch(_){}cur={c:WBS.ink,e:WBS.era,p:[pt(e)]};q.wb.push(cur);wbPaint(cv,cur)};
+cv.onpointermove=e=>{if(!cur)return;const p=pt(e),l=cur.p[cur.p.length-1];cur.p.push(p);wbPaint(cv,{c:cur.c,e:cur.e,p:[l,p]})};
+cv.onpointerup=cv.onpointercancel=()=>{cur=null};
+wbDraw();lw=cv.clientWidth;
+if(window.ResizeObserver){wbRO=new ResizeObserver(()=>{if(cv.clientWidth!=lw){lw=cv.clientWidth;wbDraw()}});wbRO.observe(cv)}}
+function wbMount(){document.body.classList.toggle('wide',S.v=='test'&&WBS.open);if(wbRO){wbRO.disconnect();wbRO=null}if(S.v!='test')return;const card=$('#app .card'),h=card&&card.querySelector('h2');if(!h)return;
+const tw=document.createElement('div'),qh=document.createElement('div');tw.className='tw'+(WBS.open?' open':'');card.before(tw);tw.append(card);
+qh.className='qh';h.before(qh);qh.append(h);qh.insertAdjacentHTML('beforeend',`<button class=g data-a=wb aria-expanded=${WBS.open}>✏️ ${WBS.open?'Hide':'Show'} whiteboard</button>`);
+if(WBS.open){tw.insertAdjacentHTML('beforeend',WB());wbInit()}const i=$('#ans');if(i&&!i.disabled)i.focus()}
+const render0=render;render=function(){render0();wbMount()};
+Object.assign(A,{wb(){cap();WBS.open=!WBS.open;render()},wbc(v){WBS.ink=v;WBS.era=false;wbUI()},wbe(){WBS.era=!WBS.era;wbUI()},wbu(){(wbQ().wb||[]).pop();wbDraw()},wbx(){(wbQ().wb||[]).length=0;wbDraw()}});
 document.body.onclick=e=>{const a=e.target.closest('[data-a]');if(a)A[a.dataset.a](a.dataset.v)};
 /* Selecting a subject selects its exam board automatically */
 document.body.onchange=e=>{if(e.target.id==='sb'){const s=e.target.value;$('#bd').value=BOARD[s]||'';$('#bn').textContent=bnote(s)}};
-document.onkeydown=e=>{if(e.key==='Enter'&&e.target.id==='ans')A.chk();if(e.key==='Enter'&&e.target.id==='nm')A.go()};
+document.onkeydown=e=>{if(e.key==='Enter'&&e.target.id==='ans')A.chk();if(e.key==='Enter'&&(e.target.id==='nm'||e.target.id==='pn'))A.go()};
 render();
+</script><script src="subjects.js">
 </script></body></html>

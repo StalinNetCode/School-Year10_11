@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>Practice Portal: Admin</title>
+<style>
+:root{--bg:#fbf6ea;--cd:#fff;--tx:#23221f;--mu:#6b6558;--pr:#0f6b5c;--on:#fff;--ok:#12703a;--bad:#b3261e;--bd:#e4dbc6;--ac:#f2b544}
+@media(prefers-color-scheme:dark){:root{--bg:#15201d;--cd:#1e2c28;--tx:#f1efe6;--mu:#a9b5ad;--pr:#5cd0b5;--on:#0c1b17;--ok:#6fdc97;--bad:#ff8f86;--bd:#31443e}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 "Trebuchet MS","Segoe UI",system-ui,sans-serif}
+main{max-width:1000px;margin:0 auto;padding:16px}
+h1{font:800 clamp(1.5rem,5vw,2.1rem)/1.15 Georgia,"Times New Roman",serif;margin:.4em 0}h2{font-size:1.1rem;margin:1.2em 0 .4em}
+.card{background:var(--cd);border:2px solid var(--bd);border-radius:16px;padding:18px;margin:12px 0}
+label{display:block;font-weight:700;margin:10px 0}
+input{width:100%;font:inherit;padding:10px 12px;margin-top:5px;border:2px solid var(--bd);border-radius:10px;background:var(--bg);color:var(--tx)}
+button{font:inherit;font-weight:700;padding:9px 15px;border:0;border-radius:10px;background:var(--pr);color:var(--on);cursor:pointer;margin:6px 6px 0 0}
+button.g{background:transparent;color:var(--pr);border:2px solid var(--pr)}
+button.lk{background:none;border:0;color:var(--pr);padding:0;margin:0;text-decoration:underline;font-weight:700;text-align:left}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--ac);outline-offset:2px}
+.mu{color:var(--mu)}.err{color:var(--bad);font-weight:700;min-height:1.4em}.ok{color:var(--ok);font-weight:700}.bad{color:var(--bad);font-weight:700}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}.stats div{background:var(--cd);border:2px solid var(--bd);border-radius:12px;padding:10px}.stats b{display:block;font-size:1.4rem}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:.92rem}th,td{padding:7px 9px;border-bottom:1px solid var(--bd);text-align:left;vertical-align:top}th{white-space:nowrap}
+summary{cursor:pointer;font-weight:700}
+</style></head><body><main id="app"></main>
+<script>
+"use strict";
+/* Admin console for the practice portal. It shows every student's results. The admin can also add a student, set a temporary PIN and delete a student; results themselves cannot be edited.
+   The password is checked by the database function portal_admin; it is kept only in this page's memory and is asked for again after a refresh. */
+const SB='https://zkxruxtvcgotbnersuaj.supabase.co',SK='sb_publishable_w5PQJEWWNFzh-QbIe5NNzw_k4nMJhk8';
+const $=s=>document.querySelector(s),esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const qh=s=>esc(s).replace(/&lt;(\/?)sup&gt;/g,'<$1sup>');
+const DIFF=['Easy','Moderate','Difficult','Very Difficult'];
+const dt=d=>d?new Date(d).toLocaleDateString('en-GB'):'';
+const rpc=async(fn,b)=>{const x=await fetch(SB+'/rest/v1/rpc/'+fn,{method:'POST',headers:{'Content-Type':'application/json',apikey:SK,Authorization:'Bearer '+SK},body:JSON.stringify(b)});if(!x.ok)throw new Error('http');return x.json()};
+const MSG={wrong:'That password is not correct.',locked:'Too many wrong attempts. Wait 15 minutes, then try again.',not_set:'No admin password has been set yet. Use "First time, or forgotten password" below.',no_setup:'There is no setup code waiting. Ask for a new one.',expired:'That setup code has expired. Ask for a new one.',weak:'Choose a password of at least 8 characters.'};
+const UM={exists:'A student with that name already exists.',bad_pin:'A PIN must be 4 to 8 digits.',bad_name:'Enter a name of up to 60 characters.',unknown:'That student no longer exists. Press Refresh.'};
+let S={v:'login',pass:'',st:[],cur:-1,test:null,row:null,msg:'',good:'',note:'',busy:0};
+const red=s=>(s.redemptions||[]).reduce((a,r)=>a+(r.amount||0),0);
+const sum=T=>{const n=T.length,c=T.reduce((s,t)=>s+(t.correct||0),0),p=T.reduce((s,t)=>s+(t.puppies||0),0);return{n,c,p,acc:n?Math.round(c/(n*10)*100):0,last:n?T.reduce((m,t)=>t.date>m?t.date:m,''):''}};
+const V={
+login:()=>`<h1>Practice Portal: Admin</h1><div class=card><label>Admin password<input id=pw type=password autocomplete=current-password></label><p class=err id=er>${esc(S.msg)}</p>${S.good?`<p class=ok>${esc(S.good)}</p>`:''}<button data-a=login>Sign in</button></div>
+<details class=card><summary>First time, or forgotten password</summary><p class=mu>Enter the one-time setup code you were given, then choose your own password (at least 8 characters).</p><label>Setup code<input id=sc autocomplete=off></label><label>New password<input id=n1 type=password autocomplete=new-password></label><label>New password again<input id=n2 type=password autocomplete=new-password></label><p class=err id=e2></p><button data-a=setup>Set password</button></details>`,
+list:()=>{const all=S.st.flatMap(s=>s.tests),a=sum(all);return `<h1>All students</h1><p><button class=g data-a=refresh>Refresh</button><button class=g data-a=out>Sign out</button></p>
+<div class=stats><div><span>Students</span><b>${S.st.length}</b></div><div><span>Tests completed</span><b>${a.n}</b></div><div><span>Overall accuracy</span><b>${a.acc}%</b></div><div><span>Total Puppies</span><b>${a.p}</b></div></div>
+<div class="card wrap"><table><tr><th>Student<th>Tests<th>Questions<th>Correct<th>Accuracy<th>Puppies earned<th>Redeemed<th>Balance<th>Last test<th>Joined<th>PIN</tr>${S.st.map((s,i)=>{const m=sum(s.tests);return `<tr><td><button class=lk data-a=open data-v=${i}>${esc(s.name)}</button><td>${m.n}<td>${m.n*10}<td>${m.c}<td>${m.acc}%<td>${m.p}<td class=mu>${red(s)}<td><b>${m.p-red(s)}</b><td>${dt(m.last)||'<span class=mu>none yet</span>'}<td>${dt(s.created)}<td>${s.temp?'Temporary: not yet changed':'Own PIN'}</tr>`}).join('')||'<tr><td colspan=11>No students yet.</tr>'}</table></div><p class=mu>Select a student's name to see their dashboard, set a temporary PIN or delete the student.</p>
+<div class=card><h2>Add a student</h2><p class=mu>Give the student this name and temporary PIN. The first time they sign in, they will be asked to choose their own PIN.</p><label>Student name<input id=an autocomplete=off maxlength=60></label><label>Temporary PIN (4 to 8 digits)<input id=ap inputmode=numeric maxlength=8 autocomplete=off></label><p class=err id=am>${esc(S.note)}</p><button data-a=add>Add student</button></div>`},
+student:()=>{const s=S.st[S.cur],m=sum(s.tests),by={};s.tests.forEach(t=>{const b=by[t.subject]=by[t.subject]||{n:0,c:0,p:0};b.n++;b.c+=t.correct||0;b.p+=t.puppies||0});
+return `<p><button class=g data-a=list>← All students</button></p><h1>${esc(s.name)}'s dashboard</h1><p class=mu>PIN: ${s.temp?'temporary (the student will be asked to choose their own at the next sign-in)':'chosen by the student'}.</p><p><button class=g data-a=reset>Set a temporary PIN</button><button class=g data-a=del>Delete this student</button></p>
+<div class=stats><div><span>Puppies earned</span><b>${m.p}</b></div><div><span>Puppy balance</span><b>${m.p-red(s)}</b></div><div class=mu><span>Redeemed</span><b>${red(s)}</b></div><div><span>Tests completed</span><b>${m.n}</b></div><div><span>Questions answered</span><b>${m.n*10}</b></div><div><span>Correct answers</span><b>${m.c}</b></div><div><span>Accuracy</span><b>${m.acc}%</b></div></div>
+<h2>By subject</h2><div class="card wrap"><table><tr><th>Subject<th>Tests<th>Correct<th>Accuracy<th>Puppies</tr>${Object.keys(by).sort().map(k=>`<tr><td>${esc(k)}<td>${by[k].n}<td>${by[k].c}/${by[k].n*10}<td>${Math.round(by[k].c/(by[k].n*10)*100)}%<td>${by[k].p}</tr>`).join('')||'<tr><td colspan=5>No tests yet.</tr>'}</table></div>
+<h2>Redeemed Puppies</h2><div class="card wrap"><table><tr><th>Date<th>Puppies<th>For<th>Reference</tr>${(s.redemptions||[]).map(r=>`<tr><td>${dt(r.date)}<td>${r.amount}<td>${esc(r.note||'')}<td>R-${r.id}</tr>`).join('')||'<tr><td colspan=4>Nothing redeemed yet.</tr>'}</table></div>
+<h2>All tests (newest first)</h2><div class="card wrap"><table><tr><th>Date<th>Test<th>Subject<th>Topic<th>Difficulty<th>Correct<th>Puppies</tr>${s.tests.map((t,i)=>`<tr><td>${dt(t.date)}<td><button class=lk data-a=test data-v=${i}>${esc(t.label||'View')}</button><td>${esc(t.subject)}<td>${esc(t.topic)}<td>${esc(DIFF[t.diff]||'')}<td>${t.correct}/10<td>${t.puppies}</tr>`).join('')||'<tr><td colspan=7>No tests yet.</tr>'}</table></div><p class=mu>Select a test to see each question and answer.</p>`},
+test:()=>{const t=S.test||{},r=S.row,Q=Array.isArray(t.questions)?t.questions:[];return `<p><button class=g data-a=back>← ${esc(S.st[S.cur].name)}'s dashboard</button></p><h1>${esc(r.label||'Test')}</h1>
+<p class=mu>${dt(r.date)} · ${esc(r.subject)} · ${esc(r.topic)} · ${esc(DIFF[r.diff]||'')} · ${r.correct}/10 correct · ${r.puppies} Puppies</p>
+<div class="card wrap"><table><tr><th>#<th>Question<th>Student's answer<th>Correct answer<th>Result</tr>${Q.map((q,i)=>`<tr><td>${i+1}<td>${qh(q.question)}<td>${q.answer?esc(q.answer):'<span class=mu>(blank)</span>'}<td>${esc(Array.isArray(q.correctAnswer)?q.correctAnswer.join(' and '):q.correctAnswer)}<td class=${q.correct?'ok':'bad'}>${q.correct?'Correct':'Not correct'}</tr>`).join('')||'<tr><td colspan=5>No question detail was saved for this test.</tr>'}</table></div>
+<p class=mu>"Not correct" includes questions where the student used Correction to see the answer.</p>`}};
+function render(){$('#app').innerHTML=V[S.v]();window.scrollTo(0,0);const p=$('#pw');if(p)p.focus()}
+const fail=m=>{S.msg=m;S.busy=0;if(S.v!='login'){S.v='login';S.pass=''}render()};
+async function load(){const j=await rpc('portal_admin',{p_pass:S.pass});if(j.status!='ok')return fail(MSG[j.status]||'Could not sign in.');S.st=j.students||[];S.msg='';S.good='';return true}
+const A={
+async login(){if(S.busy)return;const p=$('#pw').value;if(!p){S.msg='Enter the admin password.';S.good='';return render()}S.busy=1;S.pass=p;try{if(await load()){S.v='list';S.busy=0;render()}}catch(e){fail('Could not reach the server. Check the internet connection and try again.')}},
+async setup(){if(S.busy)return;const c=$('#sc').value.trim(),a=$('#n1').value,b=$('#n2').value,E=m=>{$('#e2').textContent=m};if(!c||a.length<8||a!==b)return E(!c?'Enter the setup code.':a.length<8?MSG.weak:'The two passwords do not match.');S.busy=1;E('Setting password…');
+try{const j=await rpc('portal_admin_setup',{p_code:c,p_new:a});S.busy=0;if(j.status=='ok'){S.msg='';S.good='Password set. Sign in with it above.';render()}else E(j.status=='wrong'?'That setup code is not correct.':MSG[j.status]||'Could not set the password.')}catch(e){S.busy=0;E('Could not reach the server. Check the internet connection and try again.')}},
+async refresh(){if(S.busy)return;S.busy=1;try{if(await load()){S.busy=0;render()}}catch(e){S.busy=0;alert('Could not reach the server.')}},
+out(){S={v:'login',pass:'',st:[],cur:-1,test:null,row:null,msg:'',good:'',note:'',busy:0};render()},
+list(){S.v='list';S.note='';render()},
+async user(act,name,pin){const j=await rpc('portal_admin_user',{p_pass:S.pass,p_action:act,p_name:name,p_pin:pin||null});if(j.status=='ok')return true;if(MSG[j.status]&&j.status!='weak'){fail(MSG[j.status]);return false}return UM[j.status]||'That did not work. Try again.'},
+async add(){if(S.busy)return;const n=$('#an').value.trim(),p=$('#ap').value.trim(),E=m=>{$('#am').textContent=m};if(!n||!/^\d{4,8}$/.test(p))return E(!n?'Enter the student\'s name.':UM.bad_pin);S.busy=1;E('Adding…');
+try{const r=await A.user('create',n,p);if(r===true){await load();S.note=`Added ${n}. Give them the temporary PIN ${p}.`;S.busy=0;render()}else{S.busy=0;if(r)E(r)}}catch(e){S.busy=0;E('Could not reach the server.')}},
+async reset(){if(S.busy)return;const s=S.st[S.cur],a=prompt(`Enter a temporary PIN (4 to 8 digits) for ${s.name}.\n\nTheir current PIN will stop working, and they will be asked to choose their own PIN the next time they sign in.`);if(a===null)return;const p=a.trim();if(!/^\d{4,8}$/.test(p))return alert(UM.bad_pin);S.busy=1;
+try{const r=await A.user('reset',s.name,p);S.busy=0;if(r===true){s.temp=true;render();alert(`Done. Give ${s.name} the temporary PIN ${p}.`)}else if(r)alert(r)}catch(e){S.busy=0;alert('Could not reach the server.')}},
+async del(){if(S.busy)return;const s=S.st[S.cur],a=prompt(`This permanently deletes ${s.name} and all ${s.tests.length} of their test results. It cannot be undone.\n\nTo confirm, type the student's name exactly:`);if(a===null)return;if(a.trim()!==s.name)return alert('The name did not match, so nothing was deleted.');S.busy=1;
+try{const r=await A.user('delete',s.name);if(r===true){await load();S.v='list';S.note=`${s.name} was deleted.`;S.busy=0;render()}else{S.busy=0;if(r)alert(r)}}catch(e){S.busy=0;alert('Could not reach the server.')}},
+open(v){S.cur=+v;S.v='student';render()},
+back(){S.v='student';render()},
+async test(v){if(S.busy)return;const r=S.st[S.cur].tests[+v];S.busy=1;try{const j=await rpc('portal_admin',{p_pass:S.pass,p_test:r.id});S.busy=0;if(j.status!='ok')return fail(MSG[j.status]||'Please sign in again.');S.test=j.test;S.row=r;S.v='test';render()}catch(e){S.busy=0;alert('Could not reach the server.')}}};
+document.body.onclick=e=>{const a=e.target.closest('[data-a]');if(a)A[a.dataset.a](a.dataset.v)};
+document.onkeydown=e=>{if(e.key==='Enter'&&e.target.id==='pw')A.login();if(e.key==='Enter'&&e.target.id==='n2')A.setup()};
+render();
+</script></body></html>
