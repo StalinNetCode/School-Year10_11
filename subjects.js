@@ -83,8 +83,9 @@ chk(){const q=S.t.qs[S.t.i];if(q.done)return;cap();if(!q.last){if(confirm('You h
 if(!q.k){chk0();if(!q.done&&/^Incorrect/.test(q.fb||''))fin(q);return}
 const g=mark(q,q.last);if(g.ok){q.ok=q.done=true;q.pts=PUP[S.diff];S.t.pup+=q.pts;q.fb=`Correct! 🎉 +${q.pts} ${q.pts>1?'Puppies':'Puppy'} 🐶`;cheer()}else if(g.soft){q.ok=false;q.fb=g.fb}else return fin(q);render()}});
 const G10=`Use g = 10 N/kg.`;
-/* ---------- Topic files to load: LOAD[subject] = [file names without .js]. Empty until GCSE question files are added.
+/* ---------- Topic files to load: LOAD[subject] = [file names without .js], loaded in this order from the subject folder.
    Example: const LOAD={Physics:['forces','energy','explain']}; loads physics/forces.js, physics/energy.js and physics/explain.js. ---------- */
-const LOAD={};
-for(const sj in LOAD){BANK[sj]=BANK[sj]||{};LOAD[sj].forEach(u=>{const s=document.createElement('script');s.src=sj.toLowerCase().replace(/\s+/g,'-')+'/'+u+'.js';s.async=false;document.head.append(s)})}
+const LOAD={Maths:['core','number','algebra','algebra2','algebra3','ratio','geometry','geometry2','probability','statistics']};
+/* When the last topic file has loaded, redraw the page so a topic list that is already showing switches its tests on. */
+for(const sj in LOAD){BANK[sj]=BANK[sj]||{};LOAD[sj].forEach((u,i,a)=>{const s=document.createElement('script');s.src=sj.toLowerCase().replace(/\s+/g,'-')+'/'+u+'.js';s.async=false;if(i==a.length-1)s.onload=()=>{if(S.v=='subj'||S.v=='test')render()};document.head.append(s)})}
 if(S.v=='test')render();
